@@ -1,0 +1,781 @@
+**Windows Architecture Overview**
+
+- Tiến trình (Process) là một đối tượng (Containment) và quản lý đại diện cho một phiên bản đang chạy của chương trình. Thuật ngữ “process runs” thường được sử dụng khá thường xuyên, nhưng không chính xác. Các tiến trình không chạy - các tiến trình quản lý.
+- Các luồng (Threads) là thứ thực thi code, về mặt kỹ thuật thì chạy. Từ góc độ cấp cao, process gồm:
+    - Chương trình thực thi, gồm code và dữ liệu ban đầu sử dụng để thực hiện code trong quá trình.
+    - Địa chỉ ảo riêng, dùng để cấp phát bộ nhớ cho BẤT KỲ mục đích nào mà code trong tiến trình cần.
+    - Access token (đôi khi được gọi là primary token) là đối tượng lưu trữ ngữ cảnh bảo mật mặc định của tiến trình, được luồng thực thi code trong tiến trình dùng (trừ khi một luồng đảm nhận mã thông báo khác bằng cách mạo danh - impersonation).
+    - Tay cầm riêng cho các đối tượng điều hành - handle table to Executive (kernel), như event, semaphores, file.
+        
+        →Semaphore là **cơ chế synchronization** giúp kiểm soát quyền truy cập tài nguyên và điều phối thread hoạt động ổn định hơn. Thành phần nền tảng trong hệ điều hành, concurrent programming và distributed system.
+        
+    - 1 hoặc nhiều luồng thực thi. Tiến trình với user-mode thường tạo với 1 luồng thực thi (thực thi vào main entry point của tiến trình). Tiến trình không có luồng hầu như vô dụng và bị hủy bởi kernel trong các TRƯỜNG HỢP BÌNH THƯỜNG.
+    
+    !image.png
+    
+
+Tiến trình được xác định duy nhất bởi ID, là duy nhất miễn đối tượng tiến trình kernel tồn tại. Cùng 1 ID có thể dùng lại cho tiến trình mơi với điều kiện tiến trình cũ bị phá hủy (Destroy). Điều này suy ra file thực thi không phải là định danh duy nhất của tiến trình. 
+
+→ Ví dụ như việc mở 5 tab notepad. Cùng chạy, mỗi cái có địa có không gian địa chỉ, luồng, handle table riêng biệt, Process ID duy nhất,… Tất cả đều dùng 1 file image (notepad.exe) là mã và dữ liệu ban đầu của chúng.
+
+!image.png
+
+**Dynamic Link Libraries**
+
+- Thư viện liên kết động (Dynamic Link Libraries - DLLs) là file thực thi có thể có code, data và tài nguyên (ít nhất 1 trong số này). DLLs được nạp động (dynamically) vào 1 tiến trình hoặc thời điểm khởi tạo tiến trình (là liên kết tĩnh) hoặc sau đó được yêu cầu rõ (liên kết động). DLLs không chứa các hàm main tiêu chuẩn như các tập tin thực thi, do đó không chạy trực tiếp. Cho phép share code của chính nó trong bộ nhớ vật lý giữa nhiều tiến trình dùng cùng 1 DLL, đúng với tất cả các DLL tiêu chuẩn của Windows được lưu trong thư mục **System32**.
+
+!image.png
+
+- **User processes**: Các tiến trình bình thường dựa trên các file image, đang chạy trên hệ thống, như các phiên bản của notepad, cmd, explorer,…
+- **Subsystem DLLs**: Subsystem DLLs là DLLs thực hiện API của hệ thống con. Một hệ thống con là một góc nhìn nhất định về các khả năng được kernel cung cấp. Về mặt kỹ thuật, bắt đầu từ Win 8.1, chỉ có một hệ thống con duy nhất - Windows Subsystem. Các DLL của hệ thống con bao gồm các tệp như kernel32.dll, user32.dll, gdi32.dll, advapi32.dll, combase.dll và nhiều tệp khác. Chúng chủ yếu bao gồm API của Windows được tài liệu chính thức.
+
+**Virtual Memory**
+
+- Mỗi process có riêng không gian địa chỉ tuyến tính (linear address space), ảo, và riêng của riêng nó. Address space bắt đầu trống (hoặc gần như trống, vì executable image và NtDll.Dll thường được ánh xạ đầu tiên - mapped). Khi việc thực thi của luồng chính (first) bắt đầu, bộ nhớ có khả năng được cấp phát, DLLs được tải thêm,… Address space này là private, các tiến trình khác không thể truy cập trực tiếp. Range của address space bắt đầu với 0 (dù mặt kỹ thuật 64KB address đầu tiên không thể được cấp phát) và kéo dài đến một giá trị tối đa phụ thuộc vào “bitness” của tiến trình (32 or 64 bit). Bitness của hệ điều hành và cờ của liên kết (linker flag):
+    - Với các tiến trình 32-bit trên hệ thống Win 32-bit, size của address space của tiến trình mặc định là 2 GB.
+    - Với các tiến trình 32-bit trên hệ thống Win 32-bit thiết lập tăng address space, kích thước address space của tiến trình đó có thể lớn tới 3 GB (tùy thuộc vào setting). Để tăng, tiến trình executable phải được đánh dấu bằng linker flag LARGEADDRESSAWARE trong phần header của nó. Nếu không vẫn sẽ ở 2 GB.
+    - Các tiến trình 64-bit (trên hệ thống Win 64-bit) size của address space là 8 TB (Win 8 và các bản trước) hoặc 128 TB (Bản 8.1 và các bản sau).
+    - Với các tiến trình 32-bit trên hệ thống Win 64-bit, address space size chỉ có 4GB nếu executable image được liên kết với linker flag LARGEADDRESSAWARE. Nếu không sẽ giữ ở 2 GB.
+- Bộ nhớ tự gọi nó là ảo (virtual), nghĩa là có một mối quan hệ gián tiếp giữa 1 phạm vi address và vị trí chính xác nơi nó được tìm thấy trong RAM. Bộ đệm trong tiến trình có thể ánh xạ tới RAM, hoặc tạm thời trong file (page file). Thuật ngữ virtual đề cập việc từ góc nhìn thực thi, không cần thiết phải biết bộ nhớ sắp truy cập có nằm trong RAM hay không. Nếu bộ nhớ được ánh xạ vào RAM, CPU truy cập dữ liệu trực tiếp. Nếu không, CPU tạo 1 ngoại lệ lỗi (fault exception) page khiến quản lý bộ nhớ xử lý lỗi trang bằng cách lấy dữ liệu file thích hợp, copy vào RAM, làm các thay đổi cần thiết cần thiết trong page table entries và cho CPU thử lại.
+
+**Threads**
+
+Các thực thể thực sự thực thi code là threads. 1 thread nằm trong 1 tiến trình, dùng các tài nguyên mà tiến trình cấp để làm việc (như bộ nhớ ảo và các handle tới các kernel objects). Thuộc tính quan trọng nhất mà 1 thread sở hữu gồm: 
+
+- Chế độ truy cập hiện tại, có thể là user hoặc kernel.
+- Ngữ cảnh thực thi, gồm các thanh ghi của bộ xử lý.
+- Stack, dùng cấp phát biến cục bộ và quản lý gọi hàm.
+- Thread Local Storge - Mảng lưu trữ cục bộ luồng (TLS), cung cấp cách lưu trữ dữ liệu riêng của thread với cú pháp truy cập thống nhất.
+- Base priority (độ ưu tiên cơ sở) và  ưu tiên hiện tại/động (Current/Dynamic).
+- Tính gắn kết bộ xử lý, chỉ ra threads nào được phép chạy trên processor nào.
+
+Các trạng thái phổ biến: 
+
+- Running - Đang thực thi code trên 1 bộ xử lý logic.
+- Ready - Chờ lên lịch thực thi vì tất cả các processor liên quan đều đang không khả dụng.
+- Waiting - Chờ event nào đó xảy ra trước trước khi tiếp tục (proceeding). Khi event xảy ra, thread chuyển sang trạng thái sẵn sàng.
+
+**General System Architecture**
+
+!image.png
+
+**NTDLL.DLL**: Là một DLL hệ thống, thực hiện Windows native API. Đây là lớp mã thấp nhất nhưng vẫn chạy ở user mode. Vai trò quan trọng nhất của nó là chuyển sang chế độ kernel khi gọi hệ thống. NTDLL cũng quản lý Heap, nạp các image và một phần của thread pool ở user mode.
+
+**Service Process**: Là những quy trình Windows bình thường giao tiếp với Trình quản lý Điều khiển Dịch vụ - Server Control Manager (SCM, triển khai trong services.exe) và cho phép kiểm soát một phần vòng đời của chúng. SCM có thể khởi động, dừng, tạm dừng, tiếp tục và gửi các thông điệp khác cho các dịch vụ.
+
+**Executive**: Lớp trên cùng của NtOskrnl.exe (kernel). Nó chứa hầu hết mã chạy ở chế độ kernel. Chủ yếu bao gồm các “trình quản lý” khác nhau: ObjectManager, MemoryManager, I/O Manager, Plug & Play Manager, Power Manager, Configuration Manager, v.v. Nó lớn hơn nhiều so với lớp Kernel phía dưới.
+
+**Kernel**: Hệ điều hành ở lớp kernel thực hiện những phần cơ bản nhất và nhạy cảm về thời gian của OS code. Gồm lập lịch luồng, xử lý ngắt (interrupt) và ngoại lệ (exception), cũng như triển khai các kernel nguyên thủy như mutex và semaphore. Một số kernel code được viết bằng ngôn ngữ máy riêng cho CPU để tăng hiệu suất và để truy cập trực tiếp vào các chi tiết đặc thù của CPU.
+
+**Device Driver**: Là các kernel module có thể tải. Code này chạy ở kernel mode nên có hoàn toàn quyền của kernel. Các trình điều khiển thiết bị cổ điển cung cấp sự kết nối giữa phần cứng và phần còn lại của hệ điều hành. Các loại trình điều khiển khác cung cấp khả năng lọc.
+
+**Win32k.sys**: Thành phần kernel mode của Windows subsystem. Cơ bản, đây là 1 kernel module (driver) xử lý phần giao diện người dùng của Win và các APO Graphics Device Interface (GDI) cổ điển. Nghĩa là tất cả các thao tác liên quan đến windowing đều được thành phần này xử lý. Phần còn lại của hệ thống gần như không biết gì về UI.
+
+**Hardware Abstraction Layer (HAL)**: Lớp trừu tượng (Abstraction Layer) nằm trên phần cứng gần CPU nhất. Cho phép các trình điều khiển thiết bị sử dụng API mà không cần phải biết chi tiết và cụ thể về các thứ như Bộ điều khiển Ngắt hay bộ điều khiển DMA. Tất nhiên, lớp này chủ yếu hữu ích cho các trình điều khiển thiết bị được viết để xử lý phần cứng.
+
+**System Processes**: Thuật ngữ tổng quát dùng mô tả các tiến trình thường “chỉ tồn tại”, làm công việc của chúng mà bình thường người dùng không tương tác trực tiếp với chúng. Chúng vẫn rất quan trọng, và một số thậm chí còn quan trọng với sự ổn định của hệ thống. Việc kết thúc một số tiến trình có thể gây lỗi nghiêm trọng và làm sập hệ thống. Một số tiến trình hệ thống là các tiến trình gốc, có nghĩa là chúng chỉ sử dụng native API (API được triển khai bởi NTDLL). Ví dụ về các tiến trình hệ thống bao gồm Smss.exe, Lsass.exe, Winlogon.exe, Services.exe và những tiến trình khác.
+
+**Subsystem Process**: Chạy image Csrss.exe, có thể được xem như một trợ thủ cho kernel trong việc quản lý các tiến trình đang chạy trên hệ thống Windows. Đây là một tiến trình quan trọng, nếu nó bị tắt, hệ thống sẽ bị sập. Thường thì sẽ có một phiên bản Csrss.exe cho mỗi phiên làm việc, nên trên một hệ thống chuẩn sẽ có hai phiên bản – một cho phiên 0 và một cho phiên người dùng đã đăng nhập (thường là 1). Mặc dù Csrss.exe là “quản lý” của Windows subsystem (hiện giờ là duy nhất còn lại), tầm quan trọng của nó vượt xa vai trò này.
+
+**Hyper-V Hypervisor**: Tồn tại trên Windows 10 và server 2016 (và các phiên bản sau) nếu chúng hỗ trợ Virtualization Based Security (VBS). VBS cung cấp 1 lớp bảo mật bổ sung, nơi máy thật là một máy ảo được Hyper-V kiểm soát. 
+
+**Windows Application Development**
+
+Windows cung cấp một Giao diện Lập trình Ứng dụng (API) để các nhà phát triển có thể truy cập vào các chức năng của hệ thống Windows. API cổ điển được gọi là Windows API, chủ yếu bao gồm một danh sách dài các hàm C, cung cấp các chức năng từ các dịch vụ cơ bản liên quan đến tiến trình, luồng và các đối tượng cấp thấp khác, đến giao diện người dùng, đồ họa, mạng và mọi thứ ở giữa.
+
+Bắt đầu từ Windows 8, Windows hỗ trợ hai loại ứng dụng khá khác nhau: các ứng dụng trên desktop truyền thống vốn là loại ứng dụng duy nhất trước Windows 8 và các Ứng dụng Windows Toàn cầu (Universal Windows Applications) có thể được tải lên Windows Store. Xét về mặt nội bộ, hai loại ứng dụng này về cơ bản là giống nhau. Cả hai đều sử dụng các luồng, bộ nhớ ảo, DLL, handles, v.v. Ứng dụng Store chủ yếu sử dụng Windows Runtime API (sẽ được mô tả sau trong phần này) nhưng cũng có thể dùng một phần của Windows API truyền thống. Ngược lại, ứng dụng desktop sử dụng Windows API truyền thống, nhưng cũng có thể tận dụng một phần của Windows Runtime API. Nghiên cứu này tập trung vào app desktop bởi vì toàn bộ Windows API đều sẵn có cho chúng, vì API này chứa hầu hết các chức năng hữu ích cho lập trình hệ thống.
+
+Các kiểu API khác được Windows cung cấp, đặc biệt từ Windows Vista trở đi, đều dựa trên công nghệ Component Object Model (COM) - một mô hình lập trình hướng thành phần được phát hành năm 1993 và hiện nay vẫn được nhiều thành phần và dịch vụ trong Windows sử dụng. Ví dụ bao gồm DirectX, Windows Imaging Component (WIC), DirectShow, Media Foundation, Background Intelligent Transfer Service (BITS), Windows Management Instrumentation (WMI),... Khái niệm cơ bản nhất trong COM là giao diện - một contract 
+
+- **Microsoft Foundation Classes (MFC)** - các lớp bao bọc C++ cho (phần lớn) UI mà Windows cung cấp - làm việc với cửa sổ, điều khiển, menu, GDI, hộp thoại, v.v.
+- **Active Template Library (ATL)** - một thư viện dựa trên mẫu C++ hướng tới việc xây dựng các server và client COM.
+- **Windows Template Library (WTL)** - một phần mở rộng của ATL, cung cấp các wrapper dựa trên template cho chức năng giao diện người dùng của Windows. Nó có thể so sánh với MFC về mặt tính năng, nhưng nhẹ hơn và không đi kèm với một DLL (lớn) như MFC. Có thể dùng WTL để đơn giản hóa code liên quan đến UI.
+- **.NET** - một framework và môi trường chạy (Common Language Runtime- CLR) cung cấp nhiều dịch vụ, chẳng hạn như biên dịch Just in Time (JIT) từ Intermediate Language (IL) sang mã máy và thu gom rác. .NET có thể được sử dụng thông qua các ngôn ngữ mới (C#) cung cấp nhiều tính năng, nhiều trong số đó trừu tượng hóa chức năng của Windows và tăng năng suất. Framework .NET sử dụng các API chuẩn của Windows để thực hiện các chức năng ở cấp cao hơn.
+- **Windows Runtime (WinRT)** – đây là lớp API mới nhất được thêm vào từ Windows 8 trở đi. Mục tiêu chính của nó là phát triển các ứng dụng dựa trên Universal Windows Platforms (UWP). Những ứng dụng này có thể được đóng gói và tải lên Windows Store để mọi người có thể tải về. Windows Runtime được xây dựng dựa trên phiên bản nâng cao của COM, nên nó cũng bao gồm các giao diện làm khối xây dựng chính (không phải duy nhất). Dù nền tảng này là native (và không dựa trên .NET), nó vẫn có thể được sử dụng bởi C++, C# (và các ngôn ngữ .NET khác) thậm chí cả JavaScript – Microsoft cung cấp các projections ngôn ngữ để đơn giản hóa việc truy cập các API của Windows Runtime. Một tập con các API của Windows Runtime cũng có sẵn cho các ứng dụng desktop.
+
+Hầu hết các định nghĩa chức năng API tiêu chuẩn của Windows đều có trong windows.h header file. Trong một số trường hợp, sẽ cần thêm các header khác, cũng như các thư viện bổ sung. Văn bản sẽ chỉ ra bất kỳ header và/hoặc thư viện nào như vậy.
+
+Tool để phát triển cho Windows. Đây là danh sách theo thứ tự:
+
+1. Visual Studio 2017 hoặc 2019, bất kỳ phiên bản nào, bao gồm cả phiên bản cộng đồng.
+2. Windows Software Development Kit (SDK) cài đặt tùy chọn có header và libraries (có thể) được update và nhiều tool khác.
+
+!Screenshot 2026-06-17 091608.png
+
+*Hình 1: Create a new project → search console → Console App*
+
+!image.png
+
+*Hình 2: New project* 
+
+!image.png
+
+*Hình 3: What it should look like* 
+
+Lấy một số thông tin hệ thống bằng cách gọi hàm GetNativeSystemInfo. main function code: 
+
+```cpp
+#include <windows.h>
+#include <stdio.h>
+
+int main() {
+    SYSTEM_INFO si;
+    ::GetNativeSystemInfo(&si);
+
+    printf("Number of logical Processors: %d\n", si.dwNumberOfProcessors);
+    printf("Page size: %d Bytes\n", si.dwPageSize);
+    printf("Peocessor Mask: 0x%p\n", si.dwActiveProcessorMask);
+    printf("Minimum process address: 0x%p\n", si.lpMinimumApplicationAddress);
+		printf("Maximum process address: 0x%p\n", si.lpMaximumApplicationAddress);
+
+    return 0;
+}
+```
+
+Từ menu Build, chọn Build Solution để biên dịch và liên kết dự án (về kỹ thuật là tất cả các dự án trong giải pháp). Ctrl+F5 để chạy file thực thi mà không gắn trình gỡ lỗi. (Hoặc dùng menu Debug và chọn Run Without Debugging.
+
+!image.png
+
+*Hình 4: Minh họa*
+
+!image.png
+
+*Hình 5: Kết quả dưới nền tảng x64*
+
+Nếu chạy app bằng F5 (menu Debug, Bắt đầu Gỡ lỗi), console sẽ hiện lên và rất nhanh biến mất khi app thoát. Sử dụng Ctrl+F5 thì sẽ có thông báo “Press any key to close this window…” cho phép xem đầu ra của console trước khi cửa sổ bị đóng.
+
+VS thường tạo ra hai nền tảng (x86 và x64), mà có thể dễ dàng chuyển đổi bằng Solution Platforms nằm trên thanh công cụ chính. Mặc định, x86 được chọn, điều này sẽ tạo ra kết quả như trên. Nếu chuyển nền tảng sang x64 và xây dựng lại.
+
+Sự khác biệt xuất phát từ việc các tiến trình 64-bit dùng con trỏ có kích thước 8 byte, trong khi các tiến trình 32-bit dùng con trỏ 4 byte. Thông tin address space từ cấu trúc SYSTEM_INFO được định kiểu dưới dạng con trỏ, nên kích thước của chúng thay đổi tùy theo “bitness” của tiến trình.
+
+!image.png
+
+*Hình 6: Kết quả dưới nền tảng x86 (32 bit)*
+
+Việc sử dụng dấu hai chấm kép trước tên hàm trong code trên ::GetNativeSystemInfo nhằm nhấn mạnh rằng hàm này là một phần của Windows API chứ không phải là một hàm thành viên của lớp C++ hiện tại. Trong ví dụ này điều đó rõ ràng vì không có lớp C++ nào xung quanh (nó cũng giúp việc tra cứu hàm của trình biên dịch nhanh hơn một chút).
+
+**Working with Strings**
+
+Trong C, chuỗi không phải là kiểu thực sự, mà chỉ là con trỏ tới các ký tự kết thúc bằng số không. API của Windows sử dụng chuỗi theo cách này trong nhiều trường hợp, nhưng không phải tất cả. Vấn đề mã hóa xuất hiện khi làm việc với chuỗi.
+
+Trong C, chỉ có một kiểu đại diện cho ký tự là char. Các ký tự được char đại diện có kích thước tối đa 8 bit, trong đó 7 bit đầu tiên sử dụng mã hóa ASCII. Ngày nay, các hệ thống phải hỗ trợ nhiều bộ ký tự từ nhiều ngôn ngữ khác nhau, và chúng không thể vừa trong 8 bit. Do đó, các mã hóa mới đã được tạo ra dưới thuật ngữ chung là Unicode.
+
+Unicode Consortium định nghĩa một số encodings khác. Phổ biến gồm:
+
+- **UTF-8**: Encoding phổ biến dùng cho các trang web. Mã hóa này dùng một byte cho các ký tự Latin thuộc bộ ASCII, và nhiều byte hơn cho các ngôn ngữ khác, như tiếng Trung, tiếng Do Thái, tiếng Ả Rập và nhiều ngôn ngữ khác. Mã hóa này nổi tiếng vì nếu văn bản chủ yếu là tiếng Anh, nó sẽ gọn về kích thước. Dùng từ 1 đến 4 byte cho mỗi kí tự.
+- **UTF-16**: Dùng 2 byte cho mỗi ký tự trong hầu hết các trường hợp và bao gồm tất cả các ngôn ngữ chỉ với hai byte. Một số ký tự khó hơn từ tiếng Trung và tiếng Nhật có thể cần bốn byte, nhưng những ký tự này khá hiếm.
+- **UTF-32**: Dùng bốn byte cho mỗi ký tự. Dễ làm việc nhất, nhưng khả năng lãng phí cũng cao nhất.
+
+UTF-8 là lựa chọn tốt về kích thước, nhưng về lập trình thì lại gặp vấn đề vì không thể truy cập ngẫu nhiên. Ví dụ, để đến ký tự thứ 100 trong một chuỗi UTF-8, code cần phải quét từ đầu chuỗi và đi lần lượt vì không có cách nào biết ký tự thứ 100 nằm ở đâu. 
+
+UTF-16 dễ làm việc hơn nhiều về lập trình (bỏ qua trường hợp hiếm) vì truy cập ký tự thứ 100 chỉ cần cộng thêm 200 byte vào địa chỉ bắt đầu của chuỗi.
+
+UTF-32 quá lãng phí tài nguyên.
+
+Windows dùng UTF-16 trong kernel của nó, mỗi ký tự đúng bằng 2 byte. API của Windows cũng tương tự và cũng dùng mã hóa UTF-16, các chuỗi không cần phải chuyển đổi khi API call cuối cùng đi xuống kernel. 
+
+Một số phần của Windows API chuyển từ Windows 16-bit và Windows dành cho người tiêu dùng (Windows 95/98). Những hệ thống này dùng ASCII làm cách chính để hoạt động, tức là Windows API dùng chuỗi ASCII thay vì UTF-16. Vấn đề xuất hiện khi mã hóa 2 byte được giới thiệu, mỗi ký tự chiếm 1 hoặc 2 byte, mất đi lợi thế truy cập ngẫu nhiên.
+
+Kết quả ròng của tất cả những điều này là API của Windows chứa các hàm UTF-16 và ASCII vì lý do tương thích. Ngày nay các hệ thống đã đề cập không còn tồn tại, tốt nhất là để nguyên các chuỗi mỗi ký tự một byte và chỉ sử dụng các hàm UTF-16. Việc sử dụng các hàm ASCII sẽ khiến chuỗi được chuyển sang UTF-16 rồi mới được sử dụng với hàm UTF-16.
+
+UTF-16 có lợi khi làm việc với .NET Framework, kiểu chuỗi của .NET chỉ lưu trữ các ký tự UTF-16. Nghĩa là việc gửi một chuỗi UTF-16 tới .NET không cần bất kỳ chuyển đổi hay sao chép nào.
+
+Example: 
+
+```cpp
+HANDLE CreateMutex(
+  _In_opt_ LPSECURITY_ATTRIBUTES lpMutexAttributes,
+  _In_     BOOL                  bInitialOwner,
+  _In_opt_ LPCTSTR               lpName
+);
+```
+
+Trong lập trình hệ thống với Windows, các tiền tố như `_In_`, `_In_opt_`, `_Out_`... thấy trong các khai báo API chính là **SAL (Source Code Annotation Language)**. Một tập hợp các chú thích metadata (siêu dữ liệu) được gắn vào các định nghĩa hàm và cấu trúc dữ liệu.
+C++ Compiler sẽ bỏ qua các chú thích này khi tạo file thực thi, nhưng trình phân tích code tĩnh có sẵn trong Visual Studio Enterprise lại dựa vào chúng để phát hiện lỗi tiềm ẩn trước khi chạy chương trình.
+
+| **Annotation** | **Ý nghĩa**  | **Đặc điểm** |
+| --- | --- | --- |
+| **`_In_`** | Input (Đầu vào) | Bắt buộc cung cấp dữ liệu, không được để trống (`NULL`). |
+| **`_In_opt_`** | Input tùy chọn | Truyền giá trị hoặc để trống (`NULL`). |
+| **`_Out_`** | Output (Đầu ra) | Hệ điều hành sẽ ghi dữ liệu trả về vào vùng nhớ này. |
+| **`_Inout_`** | Vừa vào vừa ra | Vừa là đầu vào, vừa là nơi hệ điều hành ghi kết quả trả về. |
+
+Với LPCTSTR: 
+
+L=Long 
+
+P=Pointer 
+
+C=Constant 
+
+STR=String. Điều duy nhất còn bí ẩn là chữ T ở giữa. Thực ra LPCTSTR là một typedef với một trong những định nghĩa sau:
+
+```cpp
+typedef LPCSTR LPCTSTR;            // const char* (UNICODE not defined)
+typedef LPCWSTR LPCTSTR;           // const wchar_t* (UNICODE defined)
+```
+
+Thuật ngữ “long pointer” ngày nay chẳng có nghĩa gì. Tất cả các con trỏ đều cùng một kích thước trong một tiến trình cụ thể (4 byte trong các tiến trình 32-bit và 8 byte trong các tiến trình 64-bit). Các thuật ngữ “long” và “short” (hoặc “near”) là từ Windows 16-bit, nơi mà những thuật ngữ này thực sự có một ý nghĩa khác. Ngoài ra, các kiểu LPCTSTR và tương tự có một phiên bản tương đương khác - không có chữ L - PCTSTR, PCWSTR, v.v. Những kiểu này thường được ưa chuộng hơn trong mã nguồn.
+
+Định nghĩa của hằng số biên dịch UNICODE làm cho LPCTSTR mở rộng thành chuỗi UTF-16, còn nếu không có thì thành chuỗi ASCII. Nghĩa là CreateMutex không thể là một hàm, vì C không cho phép nạp chồng hàm, nơi một tên hàm duy nhất có thể có nhiều kiểu nguyên mẫu khác nhau. CreateMutex là một macro, mở rộng ra thành CreateMutexW (khi UNICODE được định nghĩa) hoặc CreateMutexA (khi UNICODE không được định nghĩa). VS mặc định định nghĩa hằng số UNICODE trong tất cả các dự án mới. Ta luôn muốn dùng các hàm UTF-16 để tránh việc chuyển đổi từ ANSI sang UTF-16 (và tất nhiên với các chuỗi chứa ký tự **không phải ASCII**, việc chuyển đổi như vậy chắc chắn sẽ bị mất mát dữ liệu)
+
+W trong CreateMutexW là viết tắt của Wide và chữ A trong CreateMutexA là viết tắt của ANSI hoặc ASCII.
+
+Nếu mã cần sử dụng một chuỗi UTF-16 hằng số, thêm chữ L vào trước chuỗi để hướng dẫn trình biên dịch chuyển chuỗi sang UTF-16. Đây là hai phiên bản của một chuỗi, một là ASCII và cái còn lại là UTF-16: 
+
+```cpp
+const char    name1[] = "Hello";    // 6 bytes (including NULL terminator)
+const wchar_t name2[] = L"Hello";   // 12 bytes (including UTF-16 NULL terminat\
+or)
+```
+
+Sử dụng các macro đặt ra câu hỏi làm thế nào có thể biên dịch mã sử dụng chuỗi hằng mà không cần chọn rõ ASCII hay Unicode? Câu trả lời nằm ở một macro khác, TEXT. Đây là một ví dụ cho CreateMutex:
+
+```cpp
+HANDLE hMutex = ::CreateMutex(nullptr, FALSE, TEXT("MyMutex"));
+```
+
+Macro TEXT mở rộng thành chuỗi hằng với hoặc không có tiền tố “L” tùy thuộc vào việc macro UNICODE có được định nghĩa hay không. Vì các hàm ASCII tốn kém hơn do chúng phải chuyển giá trị sang Unicode trước khi gọi các hàm rộng, nên không bao giờ nên dùng các hàm ASCII. Nghĩa là có thể đơn giản dùng tiền tố “L” mà không cần macro TEXT. 
+
+Có một phiên bản ngắn hơn của macro TEXT gọi là _T được định nghĩa trong <tchar.h>. Chúng tương đương nhau. Việc sử dụng các macro này vẫn phổ biến, điều đó không xấu. 
+
+Giống LPCTSTR, còn có các kiểu định nghĩa khác để sử dụng ASCII hoặc Unicode, dựa trên hằng số biên dịch UNICODE.
+
+| **Common type(s)** | **ASCII (8-bit)** | **Unicode (16-bit)** |
+| --- | --- | --- |
+| TCHAR | char, CHAR | wchar_t, WCHAR |
+| LPTSTR, PTSTR | char*, CHAR*, PSTR | wchar_t*, WCHAR*, PWSTR |
+| LCPSTR, PCTSTR | const char*, PCSTR | const wchar_t*, PCWSTR |
+
+**Strings in the C/C++ Runtime**
+
+C/C++ runtime có 2 bộ hàm để thao tác với chuỗi. Bộ hàm ASCII bắt đầu bằng “str” như strlen, strcpy, strcat, v.v., nhưng cũng có các phiên bản Unicode bắt đầu bằng “wcs”, như wcslen, wcscpy, wcscat, v.v.
+
+Tương tự như Windows API, có một tập hợp các macro mở rộng ra phiên bản ASCII hoặc Unicode tùy thuộc vào một hằng số biên dịch khác, _UNICODE (lưu ý dấu gạch dưới). Tiền tố cho các hàm này là “_tcs”. Ví dụ, có các hàm tên _tcslen, _tcscpy, _tcscat, v.v., tất cả đều làm việc với kiểu TCHAR.
+
+VS mặc định định nghĩa hằng số _UNICODE nên có các hàm Unicode khi dùng các hàm “_tcs”. Sẽ rất lạ nếu chỉ có một trong các hằng số “UNICODE” được định nghĩa, nên tránh điều đó.
+
+**String Output Parameters**
+
+Truyền chuỗi vào các hàm dữ liệu đầu vào như trường hợp CreateMutex là rất phổ biến. Một nhu cầu phổ biến khác là nhận kết quả dưới dạng chuỗi. Windows API sử dụng một vài cách để truyền kết quả chuỗi trở lại.
+
+Đầu tiên (và phổ biến hơn) là khi mã của client cấp phát một bộ đệm để chứa chuỗi kết quả và cung cấp cho API kích thước của bộ đệm (kích thước tối đa mà chuỗi có thể chứa) và API sẽ ghi chuỗi vào bộ đệm tới kích thước đã chỉ định. Một số API cũng trả về số ký tự thực tế đã ghi và/hoặc số ký tự cần thiết nếu bộ đệm quá nhỏ.
+
+Xét hàm GetSystemDirectory như sau:
+
+```cpp
+UINT GetSystemDirectory(
+_Out_ LPTSTR lpBuffer,
+_In_ UINT uSize);
+```
+
+Hàm này nhận vào một bộ đệm chuỗi và kích thước của nó, rồi trả về số ký tự đã ghi lại. Tất cả các kích thước đều tính theo ký tự, chứ không phải byte. Hàm sẽ trả về số 0 trong trường hợp thất bại. Ví dụ sử dụng: 
+
+```cpp
+WCHAR path[MAX_PATH];
+::GetSystemDirectory(path, MAX_PATH);
+printf("System directory: %ws\n", path);
+```
+
+MAX_PATH được định nghĩa trong các header của Windows là 260, đây là độ dài đường dẫn tối đa tiêu chuẩn trong Windows (giới hạn này có thể được mở rộng bắt đầu từ Windows 10. printf sử dụng %ws làm định dạng chuỗi để chỉ ra đó là chuỗi Unicode, vì UNICODE được định nghĩa mặc định nên tất cả các chuỗi đều là Unicode.
+
+Trường hợp phổ biến thứ hai là khi mã phía client chỉ cung cấp một con trỏ chuỗi (thông qua địa chỉ của nó) và chính API sẽ cấp phát bộ nhớ và đặt con trỏ kết quả vào biến đã cung cấp. Nghĩa là mã phía client sẽ có nhiệm vụ giải phóng bộ nhớ khi chuỗi kết quả không còn cần nữa. **Bí quyết** là sử dụng đúng hàm để giải phóng bộ nhớ. Đây là một ví dụ cho cách sử dụng này với hàm FormatMessage được định nghĩa như sau (phiên bản Unicode của nó):
+
+```cpp
+DWORD FormatMessageW(
+*In*                          DWORD   dwFlags,
+*In_opt*                      LPCVOID lpSource,
+*In*                          DWORD   dwMessageId,
+*In*                          DWORD   dwLanguageId,
+*When*((dwFlags & FORMAT_MESSAGE_ALLOCATE_BUFFER) != 0, *At*((LPWSTR*)lpBuffer, *Outptr_result_z*))
+*When*((dwFlags & FORMAT_MESSAGE_ALLOCATE_BUFFER) == 0, *Out_writes_z*(nSize))
+LPWSTR  lpBuffer,
+*In*                          DWORD   nSize,
+*In_opt*                      va_list *Arguments);
+```
+
+FormatMessage trả về một chuỗi đại diện cho một mã lỗi. Hàm này linh hoạt ở chỗ nó có thể tự cấp phát chuỗi hoặc cho phép khách hàng cung cấp một bộ nhớ đệm để chứa chuỗi kết quả. Hành vi thực tế phụ thuộc vào tham số dwFlags đầu tiên: nếu bao gồm cờ FORMAT_MESSAGE_ALLOCATE_BUFFER, hàm sẽ tự cấp phát bộ nhớ đệm với kích thước phù hợp. Nếu không có cờ này, việc cung cấp bộ nhớ cho chuỗi trả về là trách nhiệm của người gọi.
+
+Tất cả những điều này làm cho hàm hơi khó xử 1 chút, ít nhất là vì nếu chọn phương án trước, kiểu con trỏ nên là LPWSTR* - tức là một con trỏ đến một con trỏ sẽ được hàm điền giá trị. Đòi hỏi phải ép kiểu hơi rắc rối để trình biên dịch vừa lòng.
+
+Hàm main đơn giản nhận một số lỗi từ các đối số dòng lệnh và hiển thị biểu diễn chuỗi của nó (nếu có). Nó sử dụng tùy chọn để hàm trong tự thực hiện việc cấp phát. Lý do là không có cách nào biết được chuỗi nên dài bao nhiêu, nên tốt nhất là để hàm tự cấp phát đúng kích thước.
+
+```cpp
+int main(int argc, const char* argv[]) {
+		if (argc < 2) {
+				printf("Usage: ShowError <number>\n");
+				return 0;
+		}
+		int message = atoi(argv[1]);
+		LPWSTR text;
+		DWORD chars = ::FormatMessage(
+				FORMAT_MESSAGE_ALLOCATE_BUFFER |      // function allocates
+				FORMAT_MESSAGE_FROM_SYSTEM |
+				FORMAT_MESSAGE_IGNORE_INSERTS,
+				nullptr, message, 0,
+				(LPWSTR)&text,       // ugly cast
+				0, nullptr);
+		if (chars > 0) {
+				printf("Message %d: %ws\n", message, text);
+				::LocalFree(text);
+		}
+		else {
+				printf("No such error exists\n");
+		}
+		return 0;
+```
+
+Chú ý đến việc gọi hàm LocalFree để giải phóng chuỗi nếu call thành công. Tài liệu về FormatMessage nói rằng đây là hàm cần gọi để giải phóng bộ đệm.
+
+**Safe String Functions**
+
+Một số hàm chuỗi runtime cổ điển của C/C++ (và một số hàm tương tự trong Windows API) không được xem là “an toàn” về mặt bảo mật và độ tin cậy. Ví dụ, hàm strcpy gây vấn đề vì nó sao chép chuỗi nguồn vào con trỏ đích cho đến khi gặp ký tự NULL. Điều này có thể làm tràn bộ đệm đích và gây crash trong trường hợp tốt (bộ đệm có thể nằm trên stack, ví dụ, và làm hỏng địa chỉ trả về được lưu ở đó), và có thể bị lợi dụng làm tấn công tràn bộ đệm, nơi một địa chỉ trả về thay thế được lưu trên stack, nhảy tới shellcode đã chuẩn bị sẵn.
+
+Để giảm thiểu những lỗ hổng tiềm ẩn này, Microsoft đã thêm một tập hợp các hàm chuỗi “an toàn” vào thư viện runtime C/C++, trong đó có một tham số bổ sung dùng để chỉ định kích thước tối đa của bộ đệm đích, nên nó sẽ không bao giờ tràn. Những hàm này có hậu tố “_s”, chẳng hạn như strcpy_s, wcscat_s, v.v.
+
+```cpp
+void wmain(int argc, const wchar_t* argv[]) {
+		// assume arc >= 2 for this demo
+		WCHAR buffer[32];
+		wcscpy_s(buffer, argv[1]);
+		// C++ version aware of static buffers
+		WCHAR* buffer2 = (WCHAR*)malloc(32 * sizeof(WCHAR));
+		//wcscpy_s(buffer2, argv[1]);
+		// does not compile
+		wcscpy_s(buffer2, 32, argv[1]);
+		// size in characters (not bytes)
+		free(buffer2);
+}
+```
+
+Kích thước tối đa luôn được chỉ định bằng ký tự chứ không phải byte. Cũng lưu ý rằng các hàm này có thể tự tính kích thước tối đa nếu bộ đệm đích được cấp phát tĩnh.
+
+Một tập hợp các hàm chuỗi an toàn khác cũng đã được thêm vào Windows API, giảm sự phụ thuộc vào runtime của C/C++. Những hàm này được khai báo (và triển khai) trong header <strsafe.h>. Chúng được xây dựng theo các quy ước của Windows API, nơi các hàm thực sự là macro mở rộng thành các hàm có hậu tố “A” hoặc “W”.
+
+```cpp
+StringCchCopy(buffer, _countof(buffer), argv[1]);
+StringCchCat(buffer, _countof(buffer), L"cat");
+
+StringCchCopy(buffer2, 32, argv[1]);
+StringCchCat(buffer2, 32, L"cat");
+```
+
+“Cch” viết tắt của Count of Characters.
+
+Những hàm này không có phiên bản C++ nào biết cách xử lý bộ đệm cấp phát tĩnh. Giải pháp là sử dụng macro _countof, nó trả về số lượng phần tử trong mảng. Định nghĩa của nó đại loại như sizeof(a)/sizeof(a[0]) với một mảng a.
+
+error C4996: 'wcscpy': This function or variable may be unsafe. Cân nhắc sử dụng  wcscpy_s để thay thế. Để tắt tính năng ngừng sử dụng, hãy sử dụng _CRT_SECURE_NO_WARNINGS. 
+
+Lỗi này có thể bị tắt bằng cách định nghĩa _CRT_SECURE_NO_WARNINGS trước khi include các header C/C++, nhưng đó sẽ là một ý tưởng tồi. Macro này tồn tại để giúp duy trì tương thích với mã nguồn cũ mà có lẽ không nên động chạm khi biên dịch với các compiler mới hơn.
+
+**32-bit vs. 64-bit Development**
+
+Từ Windows Vista, Windows có các phiên bản chính thức 32 bit và 64 bit (có phiên bản 64-bit không thương mại của Windows XP). Bắt đầu từ Windows Server 2008 R2, tất cả các phiên bản server đều chỉ có 64-bit. Microsoft loại bỏ các phiên bản server 32-bit vì server thường cần nhiều RAM và không gian địa chỉ tiến trình lớn, khiến các hệ thống 32-bit quá hạn chế cho công việc server.
+
+Mô hình lập trình 32 bit và 64 bit về cơ bản giống nhau từ góc nhìn API. Có thể biên dịch sang 32 hoặc 64 bit chỉ bằng cách chọn cấu hình cần thiết trong VS và nhấn Build. Tuy nhiên, nếu mã cần biên dịch thành công cho cả hai mục tiêu 32-bit và 64-bit, việc lập trình phải được thực hiện cẩn thận để sử dụng kiểu dữ liệu đúng. Trong 64-bit, con trỏ có kích thước 8 byte, trong khi ở 32-bit chúng chỉ 4 byte. Sự thay đổi này có thể dẫn đến lỗi nếu kích thước con trỏ được giả định là một giá trị nhất định. 
+
+```cpp
+void* p = ...;
+int value = (int)p;
+// do something with value
+```
+
+Mã này có lỗi, vì trong 64-bit giá trị con trỏ bị cắt xuống còn 4 byte để vừa với int (int vẫn là 4 byte ngay cả khi biên dịch 64-bit). Nếu thực sự cần ép kiểu như vậy, nên dùng một kiểu khác thay thế - INT_PTR:
+
+```cpp
+void* p = ...;
+INT_PTR value = (INT_PTR)p;
+// do something with value
+```
+
+INT_PTR nghĩa là: “int có kích thước của một con trỏ”. Các header của Windows định nghĩa một số kiểu như kiểu này với lý do đó. Các kiểu khác giữ nguyên kích thước bất kể “bitness” khi biên dịch. 
+
+| **Type name** | **size (32 bit)** | **size (64 bit)** | **Description** |
+| --- | --- | --- | --- |
+| ULONG_PTR | 4 bytes |  8 bytes | unsigned integer the size of a pointer |
+| PVOID, void* | 4 bytes | 8 bytes | void pointer |
+| any pointer | 4 bytes | 8 bytes |  |
+| BYTE, uint8_t | 1 bytes | 1 bytes | unsigned 8 bit integer |
+| WORD, uint16_t | 2 bytes | 2 bytes | unsigned 16 bit integer |
+| DWORD, ULONG, uint32_t | 4 bytes | 4 bytes | unsigned 32 bit integer |
+| LONGLONG, __int64, int64_t  | 8 bytes | 8 bytes | signed 64 bit integer |
+| SIZE_T, size_t | 4 bytes | 8 bytes | unsigned integer sized as native integer |
+
+Khác biệt giữa 32 bit và 64 bit không chỉ nằm ở kích thước kiểu dữ liệu. Address space của một tiến trình 64-bit là 128 TB (Windows 8.1 trở lên) so với chỉ 2 GB cho các tiến trình 32-bit. Trên hệ thống x64 (Intel/AMD), các tiến trình 32-bit vẫn có thể chạy bình thường nhờ vào một lớp dịch gọi là WOW64 (Windows on Windows 64). 
+
+Nếu mã chỉ nên được biên dịch ở 64 bit (hoặc chỉ 32 bit), macro _WIN64 sẽ được định nghĩa cho các biên dịch 64-bit. Ví dụ:
+
+```cpp
+printf("Processor Mask: 0x%p\n", (PVOID)si.dwActiveProcessorMask);
+```
+
+Với: 
+
+```cpp
+#ifdef _WIN64
+		printf("Processor Mask: 0x%016llX\n", si.dwActiveProcessorMask);
+#else
+		printf("Processor Mask: 0x%08X\n", si.dwActiveProcessorMask);
+#endif
+```
+
+Thay vì sử dụng chuỗi định dạng %p, vốn tự động yêu cầu 4 byte trong các tiến trình 32-bit và 8 byte trong các tiến trình 64-bit. Điều này buộc phải ép kiểu sang PVOID vì dwActiveProcessorMask là kiểu DWORD_PTR và sẽ gây ra cảnh báo khi sử dụng với %p.
+
+Có thể dùng %zu hoặc %zX, được sử dụng để định dạng các giá trị size_t, tương đương với DWORD_PTR.
+
+**Coding Conventions**
+
+- Hàm Windows API được sử dụng với tiền tố hai dấu hai chấm. ::CreateFile.
+- Dùng PascalCase. Ngoại lệ là các class liên quan đến UI bắt đầu bằng chữ cái 'C' viết hoa; điều này để nhất quán với WTL.
+- Private member variables trong C++ bắt đầu bằng dấu gạch dưới và dùng kiểu camel. Ví dụ: _size, *isRunning. Ngoại lệ là với các lớp WTL, tên biến private member bắt đầu bằng m*. Giữ cho thống nhất với ATL/WTL.
+- Tên biến không sử dụng ký hiệu Hungarian cũ. Vẫn có một số ngoại lệ, chẳng hạn như tiền tố h cho một handle và tiền tố p cho một con trỏ.
+- Tên hàm theo quy ước của Windows API sử dụng kiểu chữ Pascal.
+- Khi cần các kiểu dữ liệu như vector, thư viện chuẩn C++ được phép dùng trừ khi có lý do để dùng cái khác.
+- Dùng Windows Implementation Library (WIL) từ Microsoft, phát hành dưới dạng gói Nuget.
+
+Chú thích kiểu Hungary sử dụng các tiền tố để giúp tên biến gợi ý về kiểu dữ liệu của chúng. Ví dụ: szName, dwValue. Dù tên tham số và structure member trong Windows API vẫn sử dụng nhiều, quy ước này là lỗi thời.
+
+**C++ Usage**
+
+Các hàm khởi tạo và hủy, đặc biệt là để xây dựng các kiểu RAII (Resource Acquisition Is Initialization - Giải phóng tài nguyên khi khởi tạo). 
+
+**Handling API Errors**
+
+Hàm Windows API có thể fail vì nhiều lý do. Cách một hàm cho biết thành công hay thất bại không nhất quán giữa các hàm. Chỉ có rất ít trường hợp: 
+
+| **Function return type** | **Success is** | **Failure is**  | **How to get the error number** |
+| --- | --- | --- | --- |
+| BOOL  | not FALSE (0) | FALSE (0) | call |
+| HANDLE | not NULL (0) and
+not INVALID_
+HANDLE_VALUE (-1) | 0 or -1 | GetLastError call GetLastError |
+| void | cannot fail (usually) | None | Not needed, but in rare cases throws an SEH exception |
+| LSTATUS or LONG | ERROR_SUCCESS (0) | greater than zero | return value is the error itself |
+| HRESULT | greater or equal to 0, usually S_OK (0) | negative number |  return value is the error itself |
+| other | depends | depends | look up function
+documentation |
+
+Mục thứ hai trong bảng dành cho các hàm trả về void. Có rất ít hàm như vậy và hầu hết không thể bị lỗi. Rất ít hàm trong số đó có thể thực sự gặp lỗi trong những tình huống cực đoan ("cực đoan" thường có nghĩa là tài nguyên bộ nhớ rất thấp) với một ngoại lệ **Structured Exception Handling** (SEH).
+
+Nếu một trong số chúng gặp trục trặc, nghĩa là toàn bộ quá trình và có thể cả hệ thống đều gặp vấn đề lớn rồi.
+
+Có những hàm trả về LSTATUS hoặc LONG, cả 2 đều chỉ là số nguyên 32-bit. Những hàm này trả về ERROR_SUCCESS (0) nếu thành công. Nếu không, giá trị trả về chính là lỗi (không cần gọi GetLastError).
+
+HRESULT vốn lại là một số nguyên 32-bit. Kiểu trả về này phổ biến cho các hàm Component Object Model (COM). Giá trị bằng 0 hoặc dương nghĩa là thành công, trong khi giá trị âm nghĩa là có lỗi, được xác định theo giá trị trả về.Hầu hết trường hợp, việc kiểm tra thành công hay thất bại được thực hiện bằng macro SUCCEEDED hoặc FAILED, trả về chỉ đúng hoặc sai. Trong những trường hợp hiếm, code sẽ cần xem giá trị thực tế.
+
+Ví dụ về “other”: Hàm FormatMessage trả về một DWORD cho biết số ký tự đã sao chép vào bộ đệm được cung cấp, hoặc trả về 0 nếu hàm thất bại. Không có quy tắc cứng nào cho những loại hàm này. 
+
+Phổ biến nhất là trả về kiểu BOOL. Kiểu BOOL không giống với kiểu bool trong C++; thực ra BOOL là một số nguyên có dấu 32 bit. Một giá trị trả về khác 0 là thành công, trong khi trả về zero (FALSE) có nghĩa là hàm đã thất bại. Quan trọng là không nên kiểm tra trực tiếp với giá trị TRUE (1), vì đôi khi thành công có thể trả về một giá trị khác 1. Nếu hàm thất bại, mã lỗi thực tế có thể lấy bằng cách gọi hàm GetLastError, chịu trách nhiệm lưu lỗi cuối cùng từ một hàm API xảy ra trên luồng hiện tại. Nghĩa là mỗi luồng có giá trị lỗi cuối cùng riêng của nó, điều này hợp lý trong môi trường nhiều luồng như Windows - nhiều luồng có thể gọi các hàm API cùng lúc.
+
+Ví dụ về cách xử lý lỗi:
+
+```cpp
+BOOL success = ::CallSomeAPIThatReturnsBOOL();
+if(!success) {
+		// error- handle it (just print it in this example)
+		printf("Error: %d\n", ::GetLastError());
+}
+```
+
+Các header của Windows có một macro để chuyển lỗi Win32 (GetLastError) sang HRESULT phù hợp: HRESULT_FROM_WIN32, hữu ích nếu một phương thức COM cần trả về lỗi dựa trên một API trả về BOOL thất bại.
+
+Ví dụ xử lý lỗi dựa trên HRESULT:
+
+```cpp
+IGlobalInterfaceTable* pGit;
+HRESULT hr = ::CoCreateInstance(CLSID_StdGlobalInterfaceTable, nullptr, CLSCTX_\
+ALL,
+		IID_IGlobalInterfaceTable, (void**)&pGit);
+if(FAILED(hr)) {
+		printf("Error: %08X\n", hr);
+}
+else {
+		// do work
+		pGit->Release();       // release interface pointer
+}
+```
+
+**Defining Custom Error Codes**
+
+Cơ chế error code do GetLastError cấp có thể được các ứng dụng sử dụng để thiết lập mã lỗi theo cách tương tự. Bằng cách gọi SetLastError với mã lỗi muốn đặt trên luồng hiện tại. Một hàm có thể sử dụng một trong nhiều mã lỗi đã được định nghĩa sẵn, hoặc tự định nghĩa các mã lỗi riêng. Để tránh xung đột với các mã do hệ thống định nghĩa (system-defined code), ứng dụng nên đặt bit thứ 29 trong system-defined code.
+
+Ví dụ về hàm sử dụng kỹ thuật này:
+
+```cpp
+#define MY_ERROR_1 ((1 << 29) | 1)
+#define MY_ERROR_2 ((1 << 29) | 2)
+BOOL SomeApi1(int32_t, int32_t*);
+BOOL SomeApi2(int32_t, int32_t*);
+
+bool DoWork(int32_t value, int32_t* result) {
+		int32_t result1;
+		BOOL ok = ::SomeApi1(value, &result1);
+		if (!ok) {
+				::SetLastError(MY_ERROR_1);
+				return false;
+}
+int32_t result2;
+ok = ::SomeApi2(value, &result2);
+if (!ok) {
+		::SetLastError(MY_ERROR_2);
+		return false;
+}
+
+*result = result1 + result2;
+return true;
+}
+```
+
+**The Windows Version**
+
+Trong một số trường hợp, truy vấn hệ thống để biết phiên bản Windows mà ứng dụng hiện tại đang chạy là điều mong muốn.
+
+| **Windows release name** | **Official version number** |
+| --- | --- |
+| Windows NT 3.1 | 3.1 |
+| Windows NT 3.5 | 3.5 |
+| Windows NT 4.0 | 4 |
+| Windows 2000 | 5.0 |
+| Windows XP | 5.1 |
+| Windows Server 2003 | 5.2 |
+| Windows Vista / Server 2008 | 6.0 |
+| Windows 7 / Server 2008 R2 | 6.1 |
+| Windows 8 / Server 2012 | 6.2 |
+| Windows 8.1 / Server 2012 R2 | 6.3 |
+| Windows 10 / Server 2016 | 10.0 |
+
+Hàm để lấy thông tin này là GetVersionEx, khai báo như sau:
+
+```cpp
+typedef struct _OSVERSIONINFO {
+		DWORD dwOSVersionInfoSize;
+		DWORD dwMajorVersion;
+		DWORD dwMinorVersion;
+		DWORD dwBuildNumber;
+		DWORD dwPlatformId;
+		TCHAR szCSDVersion[ 128 ];      // Maintenance string for PSS usage
+} OSVERSIONINFO, *POSVERSIONINFO, *LPOSVERSIONINFO;
+
+BOOL GetVersionEx(
+		_Inout_ POSVERSIONINFO pVersionInformation);
+```
+
+Cách dùng: 
+
+```cpp
+OSVERSIONINFO vi = { sizeof(vi) };
+::GetVersionEx(&vi);
+
+printf("Version: %d.%d.%d\n", vi.dwMajorVersion, vi.dwMinorVersion, vi.dwBuildNumber);
+```
+
+Tuy nhiên, biên dịch nó với các SDK gần đây sẽ gây ra lỗi biên dịch: “error C4996: ‘GetVersionExW’: đã được khai báo là không còn dùng nữa”.
+
+Bỏ cảnh báo lỗi này bằng cách thêm định nghĩa này trước khi include <windows.h>:
+
+```cpp
+#define BUILD_WINDOWS
+#include <Windows.h>
+```
+
+Chạy code trên Windows đến phiên bản 8 sẽ trả về đúng phiên bản Windows. Tuy nhiên, khi chạy trên Windows 8.1 hoặc 10 (và các phiên bản server tương ứng), luôn luôn hiển thị kết quả sau:
+
+Version: 6.2.9200
+
+Đây là cơ chế phòng thủ Microsoft phát triển sau khi một số ứng dụng gặp sự cố trên Windows Vista. Vì Vista ra mắt vào tháng 1 năm 2006, gần năm năm sau Windows XP, nhiều ứng dụng được xây dựng từ thời XP, và một số thì còn phải kiểm tra xem phiên bản Windows tối thiểu có phải là XP không: 
+
+```cpp
+OSVERSIONINFO vi = { sizeof(vi) };
+::GetVersionEx(&vi);
+
+if(vi.dwMajorVersion >= 5 && vi.dwMinorVersion >= 1) {
+		// XP or later: good to go?
+}
+```
+
+Code này có bug, nó không dự đoán được khả năng có một số chính là 6 trở lên với phiên bản phụ bằng 0. Vì vậy, với Vista, điều kiện trên đã thất bại và sẽ thông báo cho người dùng “Vui lòng sử dụng XP hoặc mới hơn”. Fix như sau: 
+
+```cpp
+if(vi.dwMajorVersion > 5 || (vi.dwMajorVersion == 5 && vi.dwMinorVersion >= 1) {
+		// XP or later: good to go!
+}
+```
+
+Tính năng Switchback trả về phiên bản Windows không cao hơn 8 (6.2) để tránh các vấn đề tương thích, trừ khi ứng dụng đó đã khai báo biết về Windows phiên bản cao hơn. Thực hiện thông qua một tệp manifest- một tệp XML tùy chọn chứa thông tin cấu hình- có thể dùng để chỉ ra sự nhận biết về một phiên bản Windows cụ thể, từ Vista đến 10.
+
+Không chỉ để thao túng số phiên bản trả về, mà còn để thay đổi hành vi của một số API nhằm tương thích. Điều này được thực hiện bằng cách sử dụng Shims, giúp thay đổi hành vi của API tùy thuộc vào phiên bản OS được chọn.
+
+Có thể thêm 1 file manifest trong VS như sau:
+
+- Thêm file XML vào dự án với tên như manifest.xml. File này sẽ chứa nội dung của file manifest.
+- Điền vào manifest.
+- Mở Project/Properties và chuyển đến Manifest Tool node, Nhập và Xuất. Trong Additional Manifest Files, nhập tên file manifest.
+- Build project bình thường.
+
+!image.png
+
+*Hình 7: Project → Add → New Item → chọn XML File*
+
+!image.png
+
+*Hình 8: Project -> Input and Output → Addition Manifest Files → tên file*
+
+Setting Embed Manifest = Yes. Nó nhúng manifest như một tài nguyên trong file thực thi thay vì để nó thành một file rời trong cùng thư mục với file thực thi và luôn được đặt tên là {tên file}.exe.manifest.
+
+File manifest có thể có nhiều phần tử, nhưng ví dụ chỉ tập trung 1 phần. Đây là nó:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+	<compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+		<application>
+			<!-- Windows Vista-->
+			<!--<supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}" />-->
+			
+			<!-- Windows 7-->
+			<!--<supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />-->
+			
+			<!-- Windows 8-->
+			<!--<supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />-->
+			
+			<!-- Windows 8.1-->
+			<!--<supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />-->
+			
+			<!-- Windows 10-->
+			<!--<supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />-->
+		</application>
+	</compatibility>
+</assembly>
+```
+
+Cách dễ nhất để có một tệp manifest đẹp để chỉnh sửa là tạo một ứng dụng console C# đơn giản, sau đó thêm vào project một mục Application Manifest File, nó sẽ tạo ra XML ở trên, cùng với các phần tử khác.
+
+Các GUID cho các phiên bản hệ điều hành khác nhau đã được tạo khi những phiên bản đó được phát hành. Nghĩa là không có cách nào một ứng dụng được phát triển trong thời Windows 7 có thể nhận một phiên bản Windows 10, ví dụ. Nếu bỏ chú thích phiên bản Windows 8.1 và chạy lại ứng dụng, output là: *Version: 6.3.9600*
+
+Nếu bỏ chú thích GUID của Windows 10 (dù GUID của Windows 8.1 có được chú thích hay không cũng không quan trọng), sẽ nhận được phiên bản Windows 10 thật sự (điều kiện là nếu chạy trên máy Windows 10): *Version: 10.0.18362*
+
+**Getting the Windows Version**
+
+Vì GetVersionEx đã bị loại bỏ, nên cách đúng để lấy thông tin phiên bản Windows là một bộ API mới đã có sẵn có thể trả về kết quả, nhưng không phải theo dạng số, mà bằng cách trả về true/false cho các câu hỏi về phiên bản Windows. Chúng có trong file header <versionhelpers.h>.
+
+Một số function gồm: IsWindowsXPOrGreater, IsWindowsXPSP3OrGreater, IsWindows7OrGreater, IsWindows8Point1OrGreater, IsWindows10OrGreater, IsWindowsServer. Chúng không nhận gì và trả về TRUE hoặc FALSE. Cách triển khai của chúng sử dụng một hàm liên quan đến phiên bản khác, VerifyVersionInfo: 
+
+```cpp
+BOOL VerifyVersionInfo(
+		_Inout_ POSVERSIONINFOEX pVersionInformation,
+		_In_    DWORD dwTypeMask,
+		_In_    **DWORDLONG dwlConditionMask);
+```
+
+Hàm này biết cách so sánh các số phiên bản dựa trên các tiêu chí được chỉ định (dwConditionMask), chẳng hạn như số phiên bản chính hoặc phụ. Có thể tìm thấy phần triển khai của tất cả các hàm Boolean bên trong versionhelper.h.
+
+Cách không chính thức để lấy số phiên bản bất kể file manifest mà không cần gọi GetVersionEx. Nó dựa trên một cấu trúc dữ liệu gọi là KUSER_SHARED_DATA được ánh xạ đến mọi tiến trình tại cùng một địa chỉ ảo (0x7FFE0000). Cách khai báo nó được liệt kê trong liên kết Microsoft này: đây. Các số phiên bản Windows là một phần của cấu trúc chung này ở cùng các vị trí. Cách khác để hiển thị số phiên bản Windows:
+
+```cpp
+auto sharedUserData = (BYTE*)0x7FFE0000;
+printf("Version: %d.%d.%d\n",
+		**(ULONG**)(sharedUserData + 0x26c), // major version offset
+		**(ULONG**)(sharedUserData + 0x270), // minor version offset
+		**(ULONG**)(sharedUserData + 0x260)); // build number offset (Windows 10)
+```
+
+Recommended to use the official APIs rather than KUSER_SHARED_DATA
+
+**Exercises**
+
+Write a console application that prints more information about the system than the HelloWin application shown earlier, by calling the following APIs: GetNativeSystemInfo, GetComputerName, GetWindowsDirectory, QueryPerformanceCounter, GetProductInfo, GetComputerObjectName. Handle errors nếu có.
+
+!image.png
+
+*Hình 9: Result*
+
+```cpp
+#include <windows.h>
+#include <stdio.h>
+#include <VersionHelpers.h>
+#include <tchar.h>
+
+int systemInfo();
+int computerName();
+int windowsDirectory();
+int queryPerformanceCounter();
+int productInfo();
+int computerObject();
+
+int main() {
+	systemInfo();
+	computerName();
+	windowsDirectory();
+	queryPerformanceCounter();
+	productInfo();
+	computerObject();
+	return 0;
+}
+int systemInfo() {
+	SYSTEM_INFO si;
+	GetSystemInfo(&si);
+	printf("Processor Architecture: %d\n", si.wProcessorArchitecture);
+	printf("Number of Processors: %d\n", si.dwNumberOfProcessors);
+	return 0;
+}
+
+int computerName() {
+	TCHAR computerName[MAX_COMPUTERNAME_LENGTH + 1];
+	DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
+	if (GetComputerName(computerName, &size)) {
+		printf("Computer Name: %ws\n", computerName);
+	}
+	else {
+		printf("Failed to get computer name. Error code: %d\n", GetLastError());
+	}
+	return 0;
+}
+
+int windowsDirectory() {
+	TCHAR windowsDir[MAX_PATH];
+	UINT result = GetWindowsDirectory(windowsDir, MAX_PATH);
+	if (result > 0 && result < MAX_PATH) {
+		printf("Windows Directory: %ws\n", windowsDir);
+	}
+	else {
+		printf("Failed to get Windows directory. Error code: %d\n", GetLastError());
+	}
+	return 0;
+}
+
+int queryPerformanceCounter() {
+	LARGE_INTEGER counter;
+	if (QueryPerformanceCounter(&counter)) {
+		printf("Performance Counter: %lld\n", counter.QuadPart);
+	}
+	else {
+		printf("Failed to query performance counter. Error code: %d\n", GetLastError());
+	}
+	return 0;
+}
+
+int productInfo() {
+	OSVERSIONINFOEX osvi;
+	osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+	if (GetVersionEx((OSVERSIONINFO*)&osvi)) {
+		printf("Operating System: Windows %d.%d (Build %d)\n", osvi.dwMajorVersion, osvi.dwMinorVersion, osvi.dwBuildNumber);
+	}
+	else {
+		printf("Failed to get OS version. Error code: %d\n", GetLastError());
+	}
+	return 0;
+}
+
+int computerObject() {
+	COMPUTER_NAME_FORMAT format = ComputerNamePhysicalDnsHostname;
+	TCHAR computerName[MAX_COMPUTERNAME_LENGTH + 1];
+	DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
+	if (GetComputerNameEx(format, computerName, &size)) {
+		printf("Computer Name (DNS Hostname): %ws\n", computerName);
+	}
+	else {
+		printf("Failed to get computer name. Error code: %d\n", GetLastError());
+	}
+	return 0;
+}
+```
